@@ -97,7 +97,7 @@ function ParseElseIfStatement(parsedCodeBody, result){
         ParseElseIfStatement(parsedCodeBody.alternate, result);
     }
     else{
-        result.push(['...' ,'else statement' ,''  ,'' ,'']);
+        result.push(['? to '+lineFinish ,'else statement' ,''  ,'' ,'']);
         ParseExpression(parsedCodeBody.alternate, result);
     }
 }
@@ -118,7 +118,7 @@ function ParseIfStatement(parsedCodeBody, result){
         ParseElseIfStatement(parsedCodeBody.alternate, result);
     }
     else{
-        result.push(['...', 'else statement', '', '', '']);
+        result.push(['? to '+lineFinish , 'else statement', '', '', '']);
         ParseExpression(parsedCodeBody.alternate, result);
     }
 }
@@ -405,6 +405,9 @@ function createStringArray(str){
 
 }
 function calculateResult(newCodeTable,paramsArray){
+    if(paramsArray.length == 0){
+        return newCodeTable;
+    }
     var i;
     let counter = 0;
     for(i=0; i<newCodeTable.length && counter < paramsArray.length ; i++){
@@ -421,4 +424,195 @@ function calculateResult(newCodeTable,paramsArray){
 
 
 
-export {parseCode, ParseTable, makeTableHTML, symbolicSubstitute, calculateResult};
+
+
+function applyVarMap(splitted, variablesMap){
+    for(let i = 0; i < splitted.length; i++){
+        if(variablesMap.get(splitted[i]) != undefined){
+            splitted[i] = variablesMap.get(splitted[i]);
+        }
+    }
+    return splitted;
+}
+
+function lineSymSub(codeLine, variablesMap){
+    var splitted = codeLine[4].split(' ');
+    codeLine[4] = (applyVarMap(splitted, variablesMap).join(' '));
+    if(codeLine[2] != ''){
+        variablesMap.set(codeLine[2], (codeLine[4]));
+    }
+    var splitted2 = codeLine[3].split(' ');
+    codeLine[3] = (applyVarMap(splitted2, variablesMap).join(' '));
+
+}
+function calculateLineIfWhileStopCond(codeLine, lastLine){
+    if(parseInt(codeLine[0].split(' ')[0] + '') > parseInt(lastLine + ''))
+        return true;
+    if(parseInt(codeLine[0].split(' ')[2] + '') == parseInt(lastLine + ''))
+        return true;
+    return false;
+}
+function calculateLineIfWhile(codeTable, variablesMap, i){
+    if(codeTable[i][1] == 'while statement'){
+        lineSymSub(codeTable[i], variablesMap);
+        codeTable[i][5] = eval('['+codeTable[i][3] + ']') == 'true';
+    }
+    if(codeTable[i][5] == true){
+        return 1;
+    }
+    else{
+        let lastLine = (codeTable[i][0].split(' '))[2];
+        let j = i + 1;
+        for(; j<codeTable.length && !calculateLineIfWhileStopCond(codeTable[j], lastLine) ; j++){
+            codeTable[j][5] = false;
+        }
+        return j-i;
+    }
+}
+function calculateLine(codeLine, variablesMap){
+    let amountOfLinesCalculated = 0;
+    if(codeLine[1] == 'function declaration'){
+        codeLine[5] = true;
+        amountOfLinesCalculated++;
+    }
+    else if(codeLine[1] == 'variable declaration' || codeLine[1] == 'assignment expression' || codeLine[1] == 'return statement' ){
+        codeLine[5] = true;
+        amountOfLinesCalculated++;
+        lineSymSub(codeLine, variablesMap);
+    }
+    return amountOfLinesCalculated;
+}
+
+function actualCalculate(codeTable, variablesMap, i, j){
+    for(;i < j;){
+        let iBefore = i;
+        i = i + calculateLine(codeTable[i], variablesMap);
+        if(iBefore == i)
+            i = i + calculateLineIfWhile(codeTable, variablesMap, i);
+    }
+    return i;
+}
+
+function calculateAll(codeTable, paramsArray){
+    if(paramsArray.length == 0){
+        return codeTable;
+    }
+    let counter = 0;
+    for(var i=0; i<codeTable.length && counter < paramsArray.length ; i++){
+        if(codeTable[i][1] === 'variable declaration'){
+            let newParamValue = createStringArray(paramsArray[counter]);
+            codeTable[i][4] = newParamValue + '';
+            counter++;
+        }
+    }
+    actualCalculate(codeTable, new Map(), 0, codeTable.length);
+    return codeTable;
+}
+function checkTwoConditions(cond1, cond2){
+    return (cond1 && cond2);
+}
+function actualDyeMyIf(parsedCodeTable, resultArray){
+    let resultArrayIndex = 0;
+    let hasSeenTrue = false;
+    for(let i = 0; i < parsedCodeTable.length; i++){
+        if(checkTwoConditions(parsedCodeTable[i][1].includes('if'), !hasSeenTrue)){
+            hasSeenTrue = hasSeenTrue || resultArray[resultArrayIndex][1] ;
+            parsedCodeTable[i].push(resultArray[resultArrayIndex][1]);
+            resultArrayIndex++;
+        }
+        else if(parsedCodeTable[i][1] == 'else statement'){
+            parsedCodeTable[i].push(!hasSeenTrue);
+            hasSeenTrue = false;
+        }
+        else{ parsedCodeTable[i].push(false); }
+    }
+    return parsedCodeTable;
+}
+function dyeMyIf(parsedCodeTable, resultArray, allFalse){
+    if(allFalse){
+        parsedCodeTable.map(function(arr) { return arr.push(false); });
+        return parsedCodeTable;
+    }
+    return actualDyeMyIf(parsedCodeTable, resultArray);
+}
+function getBlockEnd(codeLine){
+    if(codeLine[1].includes('if') || codeLine[1] == 'else statement' || codeLine[1] == 'return statement'|| codeLine[1] == 'while statement' ){
+        return true;
+    }
+    return false;
+}
+function getWhileSize(table, i, lastLine){
+    let output = 0;
+    for(; i < table.length ; i++){
+        if(parseInt( table[i][0].split(' ')[2]) > lastLine){
+            return output;
+        }
+        output++;
+    }
+    return output;
+}
+function getBlockSize(table, i){
+    let output = 1;
+    if(getBlockEnd(table[i])){
+        return output;
+    }
+    if( checkTwoConditions((i-1 > 0),  table[i-1][1].includes('e statement')))
+        return getWhileSize(table, i, parseInt(table[i-1][0].split(' ')[2]));
+    for(;(output + i) < table.length && !getBlockEnd(table[i+output]) ;){
+        output = output + 1;
+    }
+    return output;
+}
+function varToString(tableLine){
+    if(tableLine[4] == '')
+        return '';
+    return ''+tableLine[2] + '=' + tableLine[4];
+}
+function assToString(tableLine){
+    return ''+tableLine[2] + '=' + tableLine[4];
+}
+function returnToString(tableLine){
+    return 'return ' + tableLine[4];
+}
+function condToString(tableLine){
+    return ''+tableLine[3];
+}
+function blockToString(table, startIndex, endIndex, blockIndex){
+    var toStringMap = new Map();
+    toStringMap.set('variable declaration', varToString);
+    toStringMap.set('assignment expression', assToString);
+    toStringMap.set('return statement', returnToString);
+    toStringMap.set('if statement', condToString);
+    toStringMap.set('else if statement', condToString);
+    toStringMap.set('while statement',condToString);
+    toStringMap.set('else statement', (function () { return 'else';}));
+    toStringMap.set('function declaration', (function () {return '';}));
+    var output = '-' + blockIndex + '-\n';
+    for(;startIndex < endIndex; startIndex++){
+        output = output + (toStringMap.get(table[startIndex][1]))(table[startIndex]) + '\n';
+    }
+    return output;
+}
+
+function colorIfsWePass(table, tableBools, cantCalc){
+    if(cantCalc){
+        return tableBools;
+    }
+    let sawTrue = false;
+    for(let i = 0;i<table.length;i++){
+        if(checkTwoConditions((!sawTrue), (table[i][1].includes('if')))){
+            sawTrue = tableBools[i][5];
+            tableBools[i][5] = true;
+        }
+        if(table[i][1] == 'else statement') {
+            tableBools[i][5] = !sawTrue;
+            sawTrue = false;
+        }
+    }
+    return tableBools;
+}
+
+
+
+
+export {parseCode, ParseTable, makeTableHTML, symbolicSubstitute, calculateResult, colorIfsWePass, blockToString, getBlockSize, dyeMyIf, calculateAll};
