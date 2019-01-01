@@ -4,6 +4,10 @@ import * as go from 'gojs';
 import {parseCode, ParseTable, makeTableHTML, symbolicSubstitute, calculateResult, colorIfsWePass, blockToString, getBlockSize, dyeMyIf, calculateAll} from './code-analyzer';
 
 
+function getCellColor(tableBools, startIndex){
+    return ((tableBools[startIndex][5]) || (tableBools[startIndex][1] == 'while statement' && tableBools[startIndex-1][5]));
+}
+
 function blockToNode($2, table, tableBools, startIndex, endIndex, blockIndex){
     var figureMap = new Map();
     figureMap.set('variable declaration', 'Rectangle');
@@ -18,7 +22,7 @@ function blockToNode($2, table, tableBools, startIndex, endIndex, blockIndex){
     colorMap.set(true, 'LimeGreen'); colorMap.set(false, 'White');
     var node =
         $2(go.Node, 'Auto',
-            $2(go.Shape, { figure: figureMap.get(table[startIndex][1]), fill: colorMap.get(tableBools[startIndex][5]) }),
+            $2(go.Shape, { figure: figureMap.get(table[startIndex][1]), fill: colorMap.get(getCellColor(tableBools, startIndex)) }),
             $2(go.TextBlock, { text: replaceAll(blockToString(table, startIndex, endIndex, blockIndex), '\n\n', '\n'), margin: 5 }) );
     return [node, 'Block Start: '+startIndex, 'Block End: '+endIndex, 'Block Number: '+blockIndex, table[startIndex][1]];
 }
